@@ -1,48 +1,16 @@
-# React v15のサイトをNextに移行する
-
-## 経緯
-
-さくらVPSのコスト
-
-## クラウド化・脱VPS
-
-## senriu.comの構成
-
-インフラ: さくらVPS
-Webサーバ: nginx
-DB: mongoDB
-バックエンド: node.js (express.js)
-フロント: React.js v15
-
-## 新しい構成
-
-Firebase Hosting
-Clound Function
-Next.js
+# Introduction to Next.js
 
 ## Next.jsとは
 
 React.jsでつくられたSSRを容易にするフレームワーク。  
-本来であれば、BFF層のNode.js上でReactDOM.renderによるHTML生成、返却を行う必要があるが、Next.jsはReact.jsで書かれたJSファイルを解析して静的HTMLを自動で出力してくれる。  
-さらにルーティングのJSON返却もよきようにやってくれる。
-
-### Next.jsを使わないSSR（react-router）
-
-URLにアクセス /work/123  
-URLのレンダリングに必要なデータをAPIから取得。ReactDOM.renderでHTMLを出力してクライアントサイドに返却  
-別のURLにreact-routerのRouteコンポーネントを介してアクセス /work/456  
-react-routerでHistory APIが更新、URLに該当するReact Componentを呼び出し。
-
-### Next.jsを使ったSSR
-
-URLにアクセス /work/123
-Next.jsで書き出されたスタティックなHTMLを返却
-別のURLにアクセス /work/456
-Next.jsでHistory APIが更新、URLに該当するReact Componentが呼び出される
+Next.jsを使わなければ、BFF層のNode.js上でURLエンドポイントを作成し、[react-dom/server](https://reactjs.org/docs/react-dom-server.html)を使って必要なReactコンポーネントを描画する必要がある。ページによってはコンポーネントに必要なpropsのデータをAPIから取得する必要もある。  
+Next.jsではクライアントサイド・サーバーサイドの実装をあまり意識せず、ReactコンポーネントとAPIからのデータ取得を実装するだけでクライアントサイド・サーバーサイドに必要なJavaScriptを自動生成してくれる。
 
 ## Next.jsのセットアップ
 
 ### npm install
+
+依存モジュールをinstallする。
 
 ```
 mkdir sample-next
@@ -51,6 +19,9 @@ npm init -y
 npm i -S react react-dom next
 mkdir pages
 ```
+
+pagesディレクトリはNext.jsで定められたディレクトリ名になっている。  
+Next.jsのCLIのnextコマンドを実行したときにpagesディレクトリ配下に置かれたJavaScriptファイルがビルドの対象ファイルになる。
 
 ### npm-scripts
 
@@ -66,12 +37,12 @@ package.jsonに下記のscriptsを定義する。
 ...
 ```
 
-npm devを実行すると、http://localhost:3000にサーバが立ち上がる。  
-何もページを設定していないので、Next.jsのデフォルトの404ページが表示される。
+npm devを実行すると、 http://localhost:3000 にサーバが立ち上がる。  
+pagesディレクトリ配下に何もページを設定していないので、Next.jsのデフォルトの404ページが表示される。
 
 ### ページ作成
 
-pages/index.jsを作成し、JSXを書く。
+トップページとなるpages/index.jsを作成し、JSXを書く。
 
 ```js
 const Index = () => (
@@ -100,8 +71,8 @@ export default About
 ```
 
 http://localhost:3000/about にAboutページが表示される。  
-トップページからAboutページへのリンクを追加する。  
-通常のaタグではなく、nextに搭載されたLinkコンポーネントを使用する。
+次にトップページからAboutページへのリンクを追加する。  
+このとき通常マークアップではaタグを使うが、nextに搭載されたLinkコンポーネントを使用する。
 
 ```js
 import Link from 'next/link'
@@ -118,8 +89,8 @@ const Index = () => (
 export default Index
 ```
 
-http://localhost:3000/ から http://localhost:3000/about に移動するとHTMLの再取得は行わず、aboutページの出力に必要なJSファイルのみが追加で読み込まれる。  
-/aboutに直接アクセスするとスタティクなAboutページのHTMLが返却される。
+開発ツールを開いた状態でhttp://localhost:3000/ から http://localhost:3000/about に移動するとHTMLの再取得が行われず、aboutページの出力に必要なJSファイルのみが追加で読み込まれるのが確認できる。  
+/aboutに直接アクセスするか、/aboutでリロードをするとスタティクなAboutページのHTMLが読み込まれる。
 
 ### Components
 
@@ -338,7 +309,85 @@ app
   })
 ```
 
-## Cloud Function
+### fetchでデータを取得
 
+APIからデータを取得してIndexコンポーネントのPropsに反映する。  
+クライアントサイドとサーバーサイドでfetchが実行できるisomophic-unfetchを使用する。  
+公開されているダミーAPI`http://dummy.restapiexample.com/api/v1/employees`を利用して、返却された配列を出力する。
 
+```js
+import Link from 'next/link'
+import Layout from '../layout'
+import fetch from 'isomorphic-unfetch'
+
+const Index = props => (
+  <Layout>
+    <h1>Users</h1>
+    <ul>
+      {props.data.map(employee => (
+        <li key={employee.id}>
+          <Link href={`/employee/${employee.id}`}>
+            <a>{employee.employee_name}</a>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  </Layout>
+)
+
+Index.getInitialProps = async function() {
+  const res = await fetch('http://dummy.restapiexample.com/api/v1/employees')
+  const data = await res.json()
+
+  return {
+    data
+  }
+}
+
+export default Index
+```
+
+URLにアクセスしてソースコードを確認すると、APIから取得したデータもHTMLタグ内に出力され、SSRが自動で行われていることが確認できる。
+
+次にURLのパス（/employee/:id）を判定して動的URLからAPIのリクエスト先を変更してAPIのデータを表示する。
+
+```js
+import Layout from '../layout'
+import fetch from 'isomorphic-unfetch'
+
+const Employee = props => (
+  <Layout>
+    <h1>{props.data.employee_name}</h1>
+    <dl>
+      <dt>id</dt>
+      <dd>{props.data.id}</dd>
+      <dt>age</dt>
+      <dd>{props.data.employee_age}</dd>
+    </dl>
+  </Layout>
+)
+
+Employee.getInitialProps = async function(context) {
+  const { id } = context.query
+  const res = await fetch(`http://dummy.restapiexample.com/api/v1/employee/${id}`)
+  const data = await res.json()
+
+  return {
+    data
+  }
+}
+
+export default Employee
+```
+
+次に、expressのgetメソッドでエンドポイントを作成してGETリクエストを解決する。
+
+```js
+...
+    server
+      .get('/employee/:id', (req, res) => {
+        app.render(req, res, '/employee', {id: req.params.id})
+      })
+...
+```
 
